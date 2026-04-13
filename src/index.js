@@ -12,6 +12,7 @@
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 const express = require("express");
 const qrcode = require("qrcode-terminal");
+const QRCode = require("qrcode");
 
 const { initSessionTable, saveSession, loadSession, deleteSession, pool } = require("./session-store");
 const { sendGroupEvent, notifyMessageSent, notifyAgentReply, notifySessionDisconnected } = require("./ordo-api");
@@ -236,7 +237,7 @@ app.get("/health", (_req, res) => {
     .catch(() => {});
 });
 
-// Get QR code (for initial setup / reconnection)
+// Get QR code as JSON (for initial setup / reconnection)
 app.get("/qr", (_req, res) => {
   if (isReady) {
     return res.json({ status: "connected", qr: null });
@@ -245,6 +246,29 @@ app.get("/qr", (_req, res) => {
     return res.json({ status: "waiting_for_scan", qr: qrCodeData });
   }
   return res.json({ status: "initializing", qr: null });
+});
+
+// Get QR code as a scannable image in the browser
+app.get("/qr-image", async (_req, res) => {
+  if (isReady) {
+    return res.send("<h2 style='font-family:sans-serif;color:green'>WhatsApp is already connected!</h2>");
+  }
+  if (!qrCodeData) {
+    return res.send("<h2 style='font-family:sans-serif'>Initializing... refresh in 10 seconds.</h2><script>setTimeout(()=>location.reload(),10000)</script>");
+  }
+  try {
+    const imgDataUrl = await QRCode.toDataURL(qrCodeData, { width: 400 });
+    res.send(`
+      <html><body style="display:flex;flex-direction:column;align-items:center;font-family:sans-serif;padding:40px">
+        <h2>Scan with WhatsApp to connect</h2>
+        <img src="${imgDataUrl}" style="width:300px;height:300px" />
+        <p style="color:#888">Page auto-refreshes every 20 seconds</p>
+        <script>setTimeout(()=>location.reload(),20000)</script>
+      </body></html>
+    `);
+  } catch (err) {
+    res.status(500).send("Failed to generate QR image: " + err.message);
+  }
 });
 
 // ---------------------------------------------------------------------------
